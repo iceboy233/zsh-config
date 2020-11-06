@@ -215,30 +215,6 @@ function is439 () {
     return 1
 }
 
-#f1# Checks whether or not you're running grml
-function isgrml () {
-    [[ -f /etc/grml_version ]] && return 0
-    return 1
-}
-
-#f1# Checks whether or not you're running a grml cd
-function isgrmlcd () {
-    [[ -f /etc/grml_cd ]] && return 0
-    return 1
-}
-
-if isgrml ; then
-#f1# Checks whether or not you're running grml-small
-    function isgrmlsmall () {
-        if [[ ${${${(f)"$(</etc/grml_version)"}%% *}##*-} == 'small' ]]; then
-            return 0
-        fi
-        return 1
-    }
-else
-    function isgrmlsmall () { return 1 }
-fi
-
 GRML_OSTYPE=$(uname -s)
 
 function islinux () {
@@ -272,16 +248,6 @@ function isutfenv () {
 
 # check for user, if not running as root set $SUDO to sudo
 (( EUID != 0 )) && SUDO='sudo' || SUDO=''
-
-# change directory to home on first invocation of zsh
-# important for rungetty -> autologin
-# Thanks go to Bart Schaefer!
-isgrml && function checkhome () {
-    if [[ -z "$ALREADY_DID_CD_HOME" ]] ; then
-        export ALREADY_DID_CD_HOME=$HOME
-        cd
-    fi
-}
 
 # check for zsh v3.1.7+
 
@@ -671,16 +637,6 @@ check_com -c dircolors && eval $(dircolors -b)
 # color setup for ls on OS X / FreeBSD:
 isdarwin && export CLICOLOR=1
 isfreebsd && export CLICOLOR=1
-
-# do MacPorts setup on darwin
-if isdarwin && [[ -d /opt/local ]]; then
-    # Note: PATH gets set in /etc/zprofile on Darwin, so this can't go into
-    # zshenv.
-    PATH="/opt/local/bin:/opt/local/sbin:$PATH"
-    MANPATH="/opt/local/share/man:$MANPATH"
-fi
-# do Fink setup on darwin
-isdarwin && xsource /sw/bin/init.sh
 
 # load our function and completion directories
 for fdir in /usr/share/grml/zsh/completion /usr/share/grml/zsh/functions; do
@@ -1516,6 +1472,11 @@ key=(
 #   - Most terminals send "ESC x" when Meta-x is pressed. Thus, sequences like
 #     '\ex' are allowed in here as well.
 
+autoload -U up-line-or-beginning-search
+autoload -U down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+
 bind2maps emacs             -- Home   beginning-of-somewhere
 bind2maps       viins vicmd -- Home   vi-beginning-of-line
 bind2maps emacs             -- End    end-of-somewhere
@@ -1524,8 +1485,8 @@ bind2maps emacs viins       -- Insert overwrite-mode
 bind2maps             vicmd -- Insert vi-insert
 bind2maps emacs             -- Delete delete-char
 bind2maps       viins vicmd -- Delete vi-delete-char
-bind2maps emacs viins vicmd -- Up     up-line-or-search
-bind2maps emacs viins vicmd -- Down   down-line-or-search
+bind2maps emacs viins vicmd -- Up     up-line-or-beginning-search
+bind2maps emacs viins vicmd -- Down   down-line-or-beginning-search
 bind2maps emacs             -- Left   backward-char
 bind2maps       viins vicmd -- Left   vi-backward-char
 bind2maps emacs             -- Right  forward-char
@@ -1668,62 +1629,8 @@ function command_not_found_handler () {
 
 #v#
 HISTFILE=${HISTFILE:-${ZDOTDIR:-${HOME}}/.zsh_history}
-isgrmlcd && HISTSIZE=500  || HISTSIZE=5000
-isgrmlcd && SAVEHIST=1000 || SAVEHIST=10000 # useful for setopt append_history
-
-# dirstack handling
-
-DIRSTACKSIZE=${DIRSTACKSIZE:-20}
-DIRSTACKFILE=${DIRSTACKFILE:-${ZDOTDIR:-${HOME}}/.zdirs}
-
-if zstyle -T ':grml:chpwd:dirstack' enable; then
-    typeset -gaU GRML_PERSISTENT_DIRSTACK
-    function grml_dirstack_filter () {
-        local -a exclude
-        local filter entry
-        if zstyle -s ':grml:chpwd:dirstack' filter filter; then
-            $filter $1 && return 0
-        fi
-        if zstyle -a ':grml:chpwd:dirstack' exclude exclude; then
-            for entry in "${exclude[@]}"; do
-                [[ $1 == ${~entry} ]] && return 0
-            done
-        fi
-        return 1
-    }
-
-    function chpwd () {
-        (( ZSH_SUBSHELL )) && return
-        (( $DIRSTACKSIZE <= 0 )) && return
-        [[ -z $DIRSTACKFILE ]] && return
-        grml_dirstack_filter $PWD && return
-        GRML_PERSISTENT_DIRSTACK=(
-            $PWD "${(@)GRML_PERSISTENT_DIRSTACK[1,$DIRSTACKSIZE]}"
-        )
-        builtin print -l ${GRML_PERSISTENT_DIRSTACK} >! ${DIRSTACKFILE}
-    }
-
-    if [[ -f ${DIRSTACKFILE} ]]; then
-        # Enabling NULL_GLOB via (N) weeds out any non-existing
-        # directories from the saved dir-stack file.
-        dirstack=( ${(f)"$(< $DIRSTACKFILE)"}(N) )
-        # "cd -" won't work after login by just setting $OLDPWD, so
-        [[ -d $dirstack[1] ]] && cd -q $dirstack[1] && cd -q $OLDPWD
-    fi
-
-    if zstyle -t ':grml:chpwd:dirstack' filter-on-load; then
-        for i in "${dirstack[@]}"; do
-            if ! grml_dirstack_filter "$i"; then
-                GRML_PERSISTENT_DIRSTACK=(
-                    "${GRML_PERSISTENT_DIRSTACK[@]}"
-                    $i
-                )
-            fi
-        done
-    else
-        GRML_PERSISTENT_DIRSTACK=( "${dirstack[@]}" )
-    fi
-fi
+HISTSIZE=8192
+SAVEHIST=16384 # useful for setopt append_history
 
 # directory based profiles
 
@@ -2817,12 +2724,6 @@ if [[ -r /etc/debian_version ]] ; then
         #a3# Execute \kbd{grep-excuses}
         alias ge='grep-excuses'
     fi
-
-    # get a root shell as normal user in live-cd mode:
-    if isgrmlcd && [[ $UID -ne 0 ]] ; then
-       alias su="sudo su"
-    fi
-
 fi
 
 # use /var/log/syslog iff present, fallback to journalctl otherwise
@@ -2857,47 +2758,7 @@ __EOF0__
     fi
 fi
 
-if isgrmlcd; then
-    # No core dumps: important for a live-cd-system
-    limit -s core 0
-fi
-
-# grmlstuff
-function grmlstuff () {
-# people should use 'grml-x'!
-    if check_com -c 915resolution; then
-        function 855resolution () {
-            echo "Please use 915resolution as resolution modifying tool for Intel \
-graphic chipset."
-            return -1
-        }
-    fi
-
-    #a1# Output version of running grml
-    alias grml-version='cat /etc/grml_version'
-
-    if check_com -c grml-debootstrap ; then
-        function debian2hd () {
-            echo "Installing debian to harddisk is possible by using grml-debootstrap."
-            return 1
-        }
-    fi
-
-    if check_com -c tmate && check_com -c qrencode ; then
-        function grml-remote-support() {
-            tmate -L grml-remote-support new -s grml-remote-support -d
-            tmate -L grml-remote-support wait tmate-ready
-            tmate -L grml-remote-support display -p '#{tmate_ssh}' | qrencode -t ANSI
-            echo "tmate session: $(tmate -L grml-remote-support display -p '#{tmate_ssh}')"
-            echo
-            echo "Scan this QR code and send it to your support team."
-        }
-    fi
-}
-
 # now run the functions
-isgrml && checkhome
-is4    && isgrml    && grmlstuff
 is4    && grmlcomp
 
 # keephack
@@ -3369,140 +3230,6 @@ if check_com isutfenv && check_com luit ; then
     fi
 fi
 
-# useful functions
-
-#f5# Backup \kbd{file_or_folder {\rm to} file_or_folder\_timestamp}
-function bk () {
-    emulate -L zsh
-    local current_date=$(date -u "+%Y%m%dT%H%M%SZ")
-    local clean keep move verbose result all to_bk
-    setopt extended_glob
-    keep=1
-    while getopts ":hacmrv" opt; do
-        case $opt in
-            a) (( all++ ));;
-            c) unset move clean && (( ++keep ));;
-            m) unset keep clean && (( ++move ));;
-            r) unset move keep && (( ++clean ));;
-            v) verbose="-v";;
-            h) <<__EOF0__
-bk [-hcmv] FILE [FILE ...]
-bk -r [-av] [FILE [FILE ...]]
-Backup a file or folder in place and append the timestamp
-Remove backups of a file or folder, or all backups in the current directory
-
-Usage:
--h    Display this help text
--c    Keep the file/folder as is, create a copy backup using cp(1) (default)
--m    Move the file/folder, using mv(1)
--r    Remove backups of the specified file or directory, using rm(1). If none
-      is provided, remove all backups in the current directory.
--a    Remove all (even hidden) backups.
--v    Verbose
-
-The -c, -r and -m options are mutually exclusive. If specified at the same time,
-the last one is used.
-
-The return code is the sum of all cp/mv/rm return codes.
-__EOF0__
-return 0;;
-            \?) bk -h >&2; return 1;;
-        esac
-    done
-    shift "$((OPTIND-1))"
-    if (( keep > 0 )); then
-        if islinux || isfreebsd; then
-            for to_bk in "$@"; do
-                cp $verbose -a "${to_bk%/}" "${to_bk%/}_$current_date"
-                (( result += $? ))
-            done
-        else
-            for to_bk in "$@"; do
-                cp $verbose -pR "${to_bk%/}" "${to_bk%/}_$current_date"
-                (( result += $? ))
-            done
-        fi
-    elif (( move > 0 )); then
-        while (( $# > 0 )); do
-            mv $verbose "${1%/}" "${1%/}_$current_date"
-            (( result += $? ))
-            shift
-        done
-    elif (( clean > 0 )); then
-        if (( $# > 0 )); then
-            for to_bk in "$@"; do
-                rm $verbose -rf "${to_bk%/}"_[0-9](#c8)T([0-1][0-9]|2[0-3])([0-5][0-9])(#c2)Z
-                (( result += $? ))
-            done
-        else
-            if (( all > 0 )); then
-                rm $verbose -rf *_[0-9](#c8)T([0-1][0-9]|2[0-3])([0-5][0-9])(#c2)Z(D)
-            else
-                rm $verbose -rf *_[0-9](#c8)T([0-1][0-9]|2[0-3])([0-5][0-9])(#c2)Z
-            fi
-            (( result += $? ))
-        fi
-    fi
-    return $result
-}
-
-#f5# cd to directory and list files
-function cl () {
-    emulate -L zsh
-    cd $1 && ls -a
-}
-
-# smart cd function, allows switching to /etc when running 'cd /etc/fstab'
-function cd () {
-    if (( ${#argv} == 1 )) && [[ -f ${1} ]]; then
-        [[ ! -e ${1:h} ]] && return 1
-        print "Correcting ${1} to ${1:h}"
-        builtin cd ${1:h}
-    else
-        builtin cd "$@"
-    fi
-}
-
-#f5# Create Directory and \kbd{cd} to it
-function mkcd () {
-    if (( ARGC != 1 )); then
-        printf 'usage: mkcd <new-directory>\n'
-        return 1;
-    fi
-    if [[ ! -d "$1" ]]; then
-        command mkdir -p "$1"
-    else
-        printf '`%s'\'' already exists: cd-ing.\n' "$1"
-    fi
-    builtin cd "$1"
-}
-
-#f5# Create temporary directory and \kbd{cd} to it
-function cdt () {
-    builtin cd "$(mktemp -d)"
-    builtin pwd
-}
-
-#f5# List files which have been accessed within the last {\it n} days, {\it n} defaults to 1
-function accessed () {
-    emulate -L zsh
-    print -l -- *(a-${1:-1})
-}
-
-#f5# List files which have been changed within the last {\it n} days, {\it n} defaults to 1
-function changed () {
-    emulate -L zsh
-    print -l -- *(c-${1:-1})
-}
-
-#f5# List files which have been modified within the last {\it n} days, {\it n} defaults to 1
-function modified () {
-    emulate -L zsh
-    print -l -- *(m-${1:-1})
-}
-# modified() was named new() in earlier versions, add an alias for backwards compatibility
-check_com new || alias new=modified
-
 # use colors when GNU grep with color-support
 if (( $#grep_options > 0 )); then
     o=${grep_options:+"${grep_options[*]}"}
@@ -3849,59 +3576,19 @@ fi # end of check whether we have the 'hg'-executable
 # disable bracketed paste mode for dumb terminals
 [[ "$TERM" == dumb ]] && unset zle_bracketed_paste
 
-# grml-small cleanups and workarounds
-
-# The following is used to remove zsh-config-items that do not work
-# in grml-small by default.
-# If you do not want these adjustments (for whatever reason), set
-# $GRMLSMALL_SPECIFIC to 0 in your .zshrc.pre file (which this configuration
-# sources if it is there).
-
-if (( GRMLSMALL_SPECIFIC > 0 )) && isgrmlsmall ; then
-
-    # Clean up
-
-    unset "abk[V]"
-    unalias    'V'      &> /dev/null
-    unfunction vman     &> /dev/null
-    unfunction viless   &> /dev/null
-    unfunction 2html    &> /dev/null
-
-    # manpages are not in grmlsmall
-    unfunction manzsh   &> /dev/null
-    unfunction man2     &> /dev/null
-
-    # Workarounds
-
-    # See https://github.com/grml/grml/issues/56
-    if ! [[ -x ${commands[dig]} ]]; then
-        function dig_after_all () {
-            unfunction dig
-            unfunction _dig
-            autoload -Uz _dig
-            unfunction dig_after_all
-        }
-        function dig () {
-            if [[ -x ${commands[dig]} ]]; then
-                dig_after_all
-                command dig "$@"
-                return "$!"
-            fi
-            printf 'This installation does not include `dig'\'' for size reasons.\n'
-            printf 'Try `drill'\'' as a light weight alternative.\n'
-            return 0
-        }
-        function _dig () {
-            if [[ -x ${commands[dig]} ]]; then
-                dig_after_all
-                zle -M 'Found `dig'\'' installed. '
-            else
-                zle -M 'Try `drill'\'' instead of `dig'\''.'
-            fi
-        }
-        compdef _dig dig
-    fi
-fi
+alias b="bazel build"
+alias bd="bazel build -c dbg"
+alias bo="bazel build -c opt"
+alias p=python3
+alias pm="python3 -m"
+alias r="bazel run"
+alias rd="bazel run -c dbg"
+alias ro="bazel run -c opt"
+alias sr="ssh -lroot"
+alias t="bazel test"
+alias td="bazel test -c dbg"
+alias to="bazel test -c opt"
+alias v=vim
 
 zrclocal
 
