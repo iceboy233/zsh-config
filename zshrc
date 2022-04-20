@@ -3238,20 +3238,6 @@ fi # end of check whether we have the 'hg'-executable
 # disable bracketed paste mode for dumb terminals
 [[ "$TERM" == dumb ]] && unset zle_bracketed_paste
 
-alias b="bazel build"
-alias bd="bazel build -c dbg"
-alias bo="bazel build -c opt"
-alias p=python3
-alias pm="python3 -m"
-alias r="bazel run"
-alias rd="bazel run -c dbg"
-alias ro="bazel run -c opt"
-alias sr="ssh -lroot"
-alias t="bazel test"
-alias td="bazel test -c dbg"
-alias to="bazel test -c opt"
-alias v=vim
-
 zrclocal
 
 unfunction grml_status_feature
