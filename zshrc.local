@@ -6,6 +6,7 @@ alias pm="python3 -m"
 alias r="bazel run"
 alias rd="bazel run -c dbg"
 alias ro="bazel run -c opt"
+alias sc=systemctl
 alias sr="ssh -lroot"
 alias t="bazel test"
 alias td="bazel test -c dbg"
